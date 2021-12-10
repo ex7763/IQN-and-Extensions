@@ -77,6 +77,7 @@ class IQN_Agent():
 
         
         # IQN-Network
+        print(state_size, action_size)
         self.qnetwork_local = IQN(state_size, action_size,layer_size, n_step, seed, N, dueling=duel, noisy=noisy, device=device).to(device)
         self.qnetwork_target = IQN(state_size, action_size,layer_size, n_step, seed,N, dueling=duel, noisy=noisy, device=device).to(device)
 
@@ -94,22 +95,24 @@ class IQN_Agent():
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
     
-    def step(self, state, action, reward, next_state, done, writer):
+    def step(self, state, action, reward, next_state, done, writer, train_when_done=True):
         # Save experience in replay memory
         self.memory.add(state, action, reward, next_state, done)
         
-        # Learn every UPDATE_EVERY time steps.
-        self.t_step = (self.t_step + 1) % self.UPDATE_EVERY
-        if self.t_step == 0:
-            # If enough samples are available in memory, get random subset and learn
-            if len(self.memory) > self.BATCH_SIZE:
-                experiences = self.memory.sample()
-                if not self.per:
-                    loss = self.learn(experiences)
-                else:
-                    loss = self.learn_per(experiences)
-                self.Q_updates += 1
-                writer.add_scalar("Q_loss", loss, self.Q_updates)
+        if not train_when_done or done:
+            for _ in range(10):
+                # Learn every UPDATE_EVERY time steps.
+                self.t_step = (self.t_step + 1) % self.UPDATE_EVERY
+                if self.t_step == 0:
+                    # If enough samples are available in memory, get random subset and learn
+                    if len(self.memory) > self.BATCH_SIZE:
+                        experiences = self.memory.sample()
+                        if not self.per:
+                            loss = self.learn(experiences)
+                        else:
+                            loss = self.learn_per(experiences)
+                        self.Q_updates += 1
+                        writer.add_scalar("Q_loss", loss, self.Q_updates)
 
     def act(self, state, eps=0., eval=False):
         """Returns actions for given state as per current policy. Acting only every 4 frames!

@@ -11,6 +11,10 @@ import argparse
 import wrapper
 import MultiPro
 
+from rl.parameters import get_parameters
+from rl.utils import make_env
+from rl.env.cgiracer import parse_cgiracer_config
+
 def evaluate(eps, frame, eval_runs=5):
     """
     Makes an evaluation run with the current epsilon
@@ -54,10 +58,19 @@ def run(frames=1000, eps_fixed=False, eps_frames=1e6, min_eps=0.01, eval_every=1
     d_eps = eps_start - min_eps
     i_episode = 1
     state = envs.reset()
+    state = np.array([state])
+    state = torch.Tensor(state).permute(0, 3, 1, 2) # from NHWC to NCHW
     score = 0                  
     for frame in range(1, frames+1):
+        t = time.monotonic()
         action = agent.act(state, eps)
+        action = action[0]
         next_state, reward, done, _ = envs.step(action) #returns np.stack(obs), np.stack(action) ...
+        action = [action]
+        reward = [reward]
+        done = [done]
+        next_state = np.array([next_state])
+        next_state = torch.Tensor(next_state).permute(0, 3, 1, 2) # from NHWC to NCHW
         for s, a, r, ns, d in zip(state, action, reward, next_state, done):
             agent.step(s, a, r, ns, d, writer)
         state = next_state
@@ -70,19 +83,25 @@ def run(frames=1000, eps_fixed=False, eps_frames=1e6, min_eps=0.01, eval_every=1
             #   eps = max(min_eps - min_eps*((frame-eps_frames)/(frames-eps_frames)), 0.001)
 
         # evaluation runs
-        if frame % eval_every == 0 or frame == 1:
-            evaluate(eps, frame*worker, eval_runs)
+        # if frame % eval_every == 0 or frame == 1:
+            # evaluate(eps, frame*worker, eval_runs)
+        t = time.monotonic() - t
+        #print(t)
         
-        if done.any():
+        #if done.any():
+        if done[0]:
             scores_window.append(score)       # save most recent score
             scores.append(score)              # save most recent score
             writer.add_scalar("Average100", np.mean(scores_window), frame*worker)
-            print('\rEpisode {}\tFrame {} \tAverage100 Score: {:.2f}'.format(i_episode*worker, frame*worker, np.mean(scores_window)), end="")
+            print('\rEpisode {}\tFrame {} \tAverage100 Score: {:.2f}, t: {:.3f}'.format(i_episode*worker, frame*worker, np.mean(scores_window), t), end="")
             if i_episode % 100 == 0:
-                print('\rEpisode {}\tFrame {}\tAverage100 Score: {:.2f}'.format(i_episode*worker, frame*worker, np.mean(scores_window)))
-            i_episode +=1 
+                print('\rEpisode {}\tFrame {}\tAverage100 Score: {:.2f}, t: {:.3f}'.format(i_episode*worker, frame*worker, np.mean(scores_window), t))
+            i_episode +=1
             state = envs.reset()
-            score = 0              
+            state = np.array([state])
+            state = torch.Tensor(state).permute(0, 3, 1, 2) # from NHWC to NCHW
+            score = 0
+
 
 
 
@@ -136,18 +155,32 @@ if __name__ == "__main__":
     np.random.seed(seed)
     random.seed(seed)
     torch.manual_seed(seed)
+
+    cfg = dict()
+    cfg['env_id'] = 'AutoRaceEnv'
+    cfg['use_wandb'] = False
+    cfg['eval'] = False
+    cfg['env_config_path'] = '/home/hpc/Project/rl/rl/config/cgiracer/config.test.yaml'
+    cfg['env_config'] = parse_cgiracer_config(config_path=cfg['env_config_path'])
     if "-ram" in args.env or args.env == "CartPole-v0" or args.env == "LunarLander-v2": 
-        envs = MultiPro.SubprocVecEnv([lambda: gym.make(args.env) for i in range(args.worker)])
-        eval_env = gym.make(args.env)
+        envs = make_env('AutoRaceEnv-v0', cfg)
+        #envs = MultiPro.SubprocVecEnv([lambda: gym.make(args.env) for i in range(args.worker)])
+        #eval_env = gym.make(args.env)
     else:
-        envs = MultiPro.SubprocVecEnv([lambda: wrapper.make_env(args.env) for i in range(args.worker)])
-        eval_env = wrapper.make_env(args.env)
+        envs = make_env('AutoRaceEnv-v0', cfg)
+        #envs = MultiPro.SubprocVecEnv([lambda: wrapper.make_env(args.env) for i in range(args.worker)])
+        #eval_env = wrapper.make_env(args.env)
     envs.seed(seed)
-    eval_env.seed(seed+1)
+    #eval_env.seed(seed+1)
 
 
-    action_size = eval_env.action_space.n
-    state_size = eval_env.observation_space.shape
+    action_size = envs.action_space.n
+    #state_size = (1,) + envs.observation_space['fisheye'].shape
+    state_size = envs.observation_space['fisheye'].shape
+    state_size = [4, 120, 160]
+
+    #action_size = eval_env.action_space.n
+    #state_size = eval_env.observation_space.shape
 
     agent = IQN_Agent(state_size=state_size,    
                         action_size=action_size,
