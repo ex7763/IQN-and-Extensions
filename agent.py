@@ -95,17 +95,17 @@ class IQN_Agent():
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
     
-    def step(self, state, action, reward, next_state, done, writer, train_when_done=True):
+    def step(self, state, action, reward, next_state, done, writer, train_when_done=True, update_times=10):
         # Save experience in replay memory
         self.memory.add(state, action, reward, next_state, done)
         
         if not train_when_done or done:
-            for _ in range(10):
+            for _ in range(update_times):
                 # Learn every UPDATE_EVERY time steps.
                 self.t_step = (self.t_step + 1) % self.UPDATE_EVERY
                 if self.t_step == 0:
                     # If enough samples are available in memory, get random subset and learn
-                    if len(self.memory) > self.BATCH_SIZE:
+                    if len(self.memory) > self.BATCH_SIZE * 10:
                         experiences = self.memory.sample()
                         if not self.per:
                             loss = self.learn(experiences)

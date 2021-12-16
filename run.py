@@ -58,10 +58,13 @@ def run(frames=1000, eps_fixed=False, eps_frames=1e6, min_eps=0.01, eval_every=1
     d_eps = eps_start - min_eps
     i_episode = 1
     state = envs.reset()
+    print(state.shape)
     state = np.array([state])
     state = torch.Tensor(state).permute(0, 3, 1, 2) # from NHWC to NCHW
+    ep_length = 0
     score = 0                  
     for frame in range(1, frames+1):
+        ep_length += 1
         t = time.monotonic()
         action = agent.act(state, eps)
         action = action[0]
@@ -72,7 +75,7 @@ def run(frames=1000, eps_fixed=False, eps_frames=1e6, min_eps=0.01, eval_every=1
         next_state = np.array([next_state])
         next_state = torch.Tensor(next_state).permute(0, 3, 1, 2) # from NHWC to NCHW
         for s, a, r, ns, d in zip(state, action, reward, next_state, done):
-            agent.step(s, a, r, ns, d, writer)
+            agent.step(s, a, r, ns, d, writer, update_times=ep_length)
         state = next_state
         score += np.mean(reward)
         # linear annealing to the min epsilon value (until eps_frames and from there slowly decease epsilon to 0 until the end of training
@@ -97,6 +100,7 @@ def run(frames=1000, eps_fixed=False, eps_frames=1e6, min_eps=0.01, eval_every=1
             if i_episode % 100 == 0:
                 print('\rEpisode {}\tFrame {}\tAverage100 Score: {:.2f}, t: {:.3f}'.format(i_episode*worker, frame*worker, np.mean(scores_window), t))
             i_episode +=1
+            ep_length = 0
             state = envs.reset()
             state = np.array([state])
             state = torch.Tensor(state).permute(0, 3, 1, 2) # from NHWC to NCHW
@@ -161,6 +165,7 @@ if __name__ == "__main__":
     cfg['use_wandb'] = False
     cfg['eval'] = False
     cfg['env_config_path'] = '/home/hpc/Project/rl/rl/config/cgiracer/config.test.yaml'
+    cfg['env_config_path'] = '/home/cgiracer/rl/rl/config/cgiracer/config.nv07.yaml'
     cfg['env_config'] = parse_cgiracer_config(config_path=cfg['env_config_path'])
     if "-ram" in args.env or args.env == "CartPole-v0" or args.env == "LunarLander-v2": 
         envs = make_env('AutoRaceEnv-v0', cfg)
@@ -177,7 +182,7 @@ if __name__ == "__main__":
     action_size = envs.action_space.n
     #state_size = (1,) + envs.observation_space['fisheye'].shape
     state_size = envs.observation_space['fisheye'].shape
-    state_size = [4, 120, 160]
+    state_size = [6, 120, 160]
 
     #action_size = eval_env.action_space.n
     #state_size = eval_env.observation_space.shape

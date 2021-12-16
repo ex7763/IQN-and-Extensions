@@ -67,7 +67,7 @@ class IQN(nn.Module):
         # Network Architecture
         if self.state_dim == 3:
             self.head = nn.Sequential(
-                nn.Conv2d(4, out_channels=32, kernel_size=8, stride=4),
+                nn.Conv2d(self.input_shape[0], out_channels=32, kernel_size=8, stride=4),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2),
                 nn.ReLU(),
@@ -117,13 +117,13 @@ class IQN(nn.Module):
         batch_size = input.shape[0]
         
         x = torch.relu(self.head(input))
-        if self.state_dim == 3: x = x.view(input.size(0), -1)
+        if self.state_dim == 3: x = x.contiguous().view(input.size(0), -1)
         cos, taus = self.calc_cos(batch_size, num_tau) # cos shape (batch, num_tau, layer_size)
-        cos = cos.view(batch_size*num_tau, self.n_cos)
-        cos_x = torch.relu(self.cos_embedding(cos)).view(batch_size, num_tau, self.cos_layer_out) # (batch, n_tau, layer)
+        cos = cos.contiguous().view(batch_size*num_tau, self.n_cos)
+        cos_x = torch.relu(self.cos_embedding(cos)).contiguous().view(batch_size, num_tau, self.cos_layer_out) # (batch, n_tau, layer)
         
         # x has shape (batch, layer_size) for multiplication –> reshape to (batch, 1, layer)
-        x = (x.unsqueeze(1)*cos_x).view(batch_size*num_tau, self.cos_layer_out)
+        x = (x.unsqueeze(1)*cos_x).contiguous().view(batch_size*num_tau, self.cos_layer_out)
         
         x = torch.relu(self.ff_1(x))
         if self.dueling:
